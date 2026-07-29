@@ -43,7 +43,8 @@ Must be reachable via a live URL (not just localhost), so it can be demoed witho
 - **All order-placement correctness lives in one Postgres function, `place_order()`** (`supabase/schema.sql`) — it re-reads prices from the database, checks the budget, and writes the order and budget update in a single transaction. Never add a code path that inserts into `orders` directly.
 - Prices sent from the browser are never trusted; always re-read from `products`.
 - Remaining budget is never stored — always compute `budget - total_spent`.
-- Database setup and seeding are run by pasting `supabase/schema.sql` and `supabase/seed.sql` into Supabase's browser SQL editor.
+- **Every database change goes in `supabase/schema.sql` or `supabase/seed.sql`, never only in the Supabase dashboard.** Applied with `npm run db:apply`. Anything clicked in the dashboard exists in that one project only and is lost if the project is recreated; anything in these files is in git and reapplies automatically.
+- An event trigger at the end of `schema.sql` **auto-enables RLS on any new `public` table**. Consequence: a newly created table denies all access until you write policies for it. If a new table looks inexplicably empty, that is why.
 
 ## Folder structure
 

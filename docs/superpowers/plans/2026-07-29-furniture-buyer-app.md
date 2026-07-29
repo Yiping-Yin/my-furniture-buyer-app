@@ -489,7 +489,31 @@ import('pg').then(async ({default: pg}) => {
 ```
 Expected: tables include `order_items, orders, products, profiles`; `products` count is `10`; every table shows `=true` for RLS.
 
-- [ ] **Step 11: Commit**
+- [ ] **Step 11: Verify the automatic-RLS event trigger actually fires**
+
+`schema.sql` ends with an event trigger that enables RLS on any new `public` table. Event triggers normally require superuser, and Supabase's `postgres` role is not a true superuser — so this must be proven, not assumed. If `npm run db:apply` reported a permission error on the `create event trigger` statement, stop and use the fallback in Step 12 instead.
+
+```bash
+node --env-file=.env.local -e "
+import('pg').then(async ({default: pg}) => {
+  const c = new pg.Client({connectionString: process.env.SUPABASE_DB_URL, ssl:{rejectUnauthorized:false}});
+  await c.connect();
+  const t = await c.query(\"select evtname from pg_event_trigger where evtname='enable_rls_on_new_tables_trigger'\");
+  console.log('trigger installed:', t.rowCount === 1);
+  await c.query('create table public.rls_canary (id int)');
+  const r = await c.query(\"select relrowsecurity from pg_class where relname='rls_canary'\");
+  console.log('RLS auto-enabled on new table:', r.rows[0]?.relrowsecurity === true);
+  await c.query('drop table public.rls_canary');
+  await c.end();
+})"
+```
+Expected: `trigger installed: true` and `RLS auto-enabled on new table: true`. Anything else means new tables are NOT being protected automatically — say so rather than assuming it worked.
+
+- [ ] **Step 12: Fallback if event triggers are not permitted**
+
+If Supabase refuses the `create event trigger` statement, delete that block from `schema.sql` (leaving the four explicit `enable row level security` statements, which do not need superuser), re-apply, and instead have the owner click the **Enable automatic RLS** suggestion in the Supabase dashboard. Note in `CLAUDE.md` that the protection lives in the dashboard rather than in `schema.sql`, so it will not survive recreating the project from scratch.
+
+- [ ] **Step 13: Commit**
 
 ```bash
 git add -A

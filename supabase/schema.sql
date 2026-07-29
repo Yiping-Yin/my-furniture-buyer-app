@@ -93,3 +93,57 @@ create policy "own order items are readable" on public.order_items
 
 -- No insert/update/delete policies anywhere. All writes go through
 -- place_order(), which is security definer and therefore bypasses these.
+
+
+-- ---------------------------------------------------------------------------
+-- Safety net: automatically enable RLS on any NEW table in public.
+--
+-- Why this matters here: the anon key this app ships with is public, so a table
+-- in the public schema WITHOUT RLS is readable and writable by anyone on the
+-- internet who views the page source. Forgetting `enable row level security`
+-- once is a full data breach. This event trigger removes that failure mode by
+-- making protection the default rather than something to remember.
+--
+-- Fail-closed by design: RLS with no policies denies ALL access to ordinary
+-- users. So a new table will appear empty (and reject writes) until you add
+-- policies for it. That is the intended behaviour, not a bug — but it is the
+-- thing that will confuse you later, so: if a new table seems inexplicably
+-- empty, it needs a policy.
+--
+-- Only affects tables created AFTER this runs; existing tables are untouched
+-- (the four above enable RLS explicitly, so they are covered either way).
+-- ---------------------------------------------------------------------------
+create or replace function public.enable_rls_on_new_tables()
+returns event_trigger
+language plpgsql
+security definer
+set search_path = public
+as $$
+declare
+  ddl record;
+begin
+  for ddl in select * from pg_event_trigger_ddl_commands() loop
+    -- Restrict to ordinary and partitioned tables in public, skipping
+    -- temporary tables and anything that already has RLS on.
+    if exists (
+      select 1
+      from pg_class c
+      join pg_namespace n on n.oid = c.relnamespace
+      where c.oid = ddl.objid
+        and n.nspname = 'public'
+        and c.relkind in ('r', 'p')     -- table, partitioned table
+        and c.relpersistence <> 't'     -- not a temp table
+        and not c.relrowsecurity
+    ) then
+      execute format('alter table %s enable row level security', ddl.object_identity);
+      raise notice 'automatically enabled RLS on %', ddl.object_identity;
+    end if;
+  end loop;
+end;
+$$;
+
+drop event trigger if exists enable_rls_on_new_tables_trigger;
+create event trigger enable_rls_on_new_tables_trigger
+  on ddl_command_end
+  when tag in ('CREATE TABLE', 'CREATE TABLE AS')
+  execute function public.enable_rls_on_new_tables();
