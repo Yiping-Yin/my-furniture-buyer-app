@@ -1,0 +1,11 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-geist-sans);
+  --font-mono: var(--font-geist-mono);
+}
+
+/* Colours are set with Tailwind classes on <body> in app/layout.js.
+   This app commits to a single light theme, so the scaffold's
+   prefers-color-scheme block was removed — with the body colours coming from
+   Tailwind classes it only ever half-applied, which read as a rendering bug. */

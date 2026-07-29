@@ -23,6 +23,18 @@
 - **User-facing error text must match §8 of the spec verbatim.**
 - Package manager: **npm**. Node 24 is installed; `--env-file` is available and should be used instead of a dotenv dependency for scripts.
 
+### Next.js 16 constraints (verified against `node_modules/next/dist/docs`)
+
+The installed version is **Next 16.2.12 / React 19.2.4 / Tailwind 4**. Next 16 ships an `AGENTS.md` warning that its APIs differ from model training data. These were checked in the shipped docs and apply to this plan:
+
+- **There is no `middleware.js` in Next 16.** It is renamed to **`proxy.js`** at the project root, and the exported function must be named **`proxy`**, not `middleware`. A file called `middleware.js` is not picked up — route protection would silently never run. The `proxy` runtime is `nodejs` and cannot be configured.
+- **`cookies()` is async-only** — synchronous access was removed in 16. Always `await cookies()`.
+- **`revalidatePath(path, type?)` is unchanged**, including `revalidatePath('/', 'layout')`. (`revalidateTag` now needs a second argument — this plan does not use it.)
+- **Do not use `export const dynamic = 'force-dynamic'`.** Reading cookies already forces dynamic rendering, so it is redundant; the docs now steer away from it.
+- Partial Prerendering / `cacheComponents` is opt-in and stays **off** — no `next.config.mjs` changes.
+- Next's docs note that proxy should not be the authorization boundary. That matches this design: proxy handles the redirect for user experience, and **RLS is the real boundary** — a logged-out request reaching a page directly gets zero rows back, not a data leak.
+- The scaffold reports **12 high-severity npm advisories**, all transitive in Next's own dev/build chain (`minimatch`/`brace-expansion` via eslint, `postcss`, `sharp`). `npm audit fix` cannot resolve them without breaking changes. None are reachable here: no user-supplied CSS, no user-uploaded images, eslint is dev-only. Leave them; do not run `npm audit fix --force`.
+
 ## Prerequisites — owner actions (cannot be automated)
 
 These need the owner's own browser login. Do these at the start of Task 1 and Task 2 respectively; everything else is automated.
@@ -51,7 +63,7 @@ These need the owner's own browser login. Do these at the start of Task 1 and Ta
 | `lib/supabase-server.js` | Server Supabase client (reads session cookie) |
 | `lib/supabase-browser.js` | Browser Supabase client |
 | `lib/money.js` | `formatMoney(value)` — the single place money is formatted |
-| `middleware.js` | Session refresh + redirect logged-out users |
+| `proxy.js` | Session refresh + redirect logged-out users (Next 16's renamed middleware) |
 | `supabase/schema.sql` | Tables, trigger, RLS policies, `place_order()` |
 | `supabase/seed.sql` | 10 sample products |
 | `supabase/apply.mjs` | Runs schema.sql + seed.sql over `SUPABASE_DB_URL` |
@@ -778,7 +790,7 @@ git commit -m "feat: add place_order with atomic budget enforcement and verifica
 ### Task 4: Authentication
 
 **Files:**
-- Create: `lib/supabase-server.js`, `lib/supabase-browser.js`, `app/actions/auth.js`, `app/login/page.js`, `app/signup/page.js`, `components/AuthForm.js`, `middleware.js`
+- Create: `lib/supabase-server.js`, `lib/supabase-browser.js`, `app/actions/auth.js`, `app/login/page.js`, `app/signup/page.js`, `components/AuthForm.js`, `proxy.js`
 - Modify: `app/page.js`
 
 **Interfaces:**
@@ -1004,7 +1016,9 @@ export default function SignupPage() {
 }
 ```
 
-- [ ] **Step 6: Create `middleware.js`**
+- [ ] **Step 6: Create `proxy.js`**
+
+Next 16 renamed `middleware.js` to `proxy.js` and the export must be named `proxy`. Naming either one wrong means the file is ignored and logged-out users reach protected pages.
 
 ```js
 import { createServerClient } from '@supabase/ssr'
@@ -1012,7 +1026,7 @@ import { NextResponse } from 'next/server'
 
 const PROTECTED = ['/catalogue', '/cart', '/orders']
 
-export async function middleware(request) {
+export async function proxy(request) {
   let response = NextResponse.next({ request })
 
   const supabase = createServerClient(
@@ -1753,8 +1767,6 @@ import Link from 'next/link'
 import { createServerSupabase } from '@/lib/supabase-server'
 import { getSessionUserAndProfile } from '@/lib/user'
 import { formatMoney } from '@/lib/money'
-
-export const dynamic = 'force-dynamic'
 
 export default async function OrdersPage() {
   const supabase = await createServerSupabase()

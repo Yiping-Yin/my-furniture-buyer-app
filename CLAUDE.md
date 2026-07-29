@@ -1,5 +1,8 @@
 # Furniture Buyer App
 
+@AGENTS.md
+
+
 ## What this is
 
 A web app for a furniture shop's buyers, built across a multi-day hackathon (today is Day 1). A logged-in user browses a furniture catalogue and places orders, with the app tracking their spending against a personal budget.
@@ -24,7 +27,11 @@ Must be reachable via a live URL (not just localhost), so it can be demoed witho
 
 ## Tech stack
 
-- **Next.js** (App Router, JavaScript — not TypeScript) — pages and server logic in one codebase.
+- **Next.js 16** (App Router, JavaScript — not TypeScript) — pages and server logic in one codebase.
+  - **Next 16 renamed `middleware.js` to `proxy.js`**, and the exported function must be named `proxy`. A file named `middleware.js` is silently ignored.
+  - `cookies()` is async-only — always `await` it.
+  - Don't use `export const dynamic = 'force-dynamic'`; reading cookies already forces dynamic rendering.
+  - Read `node_modules/next/dist/docs/` before assuming any Next API works the way you remember.
 - **Supabase** — Postgres database + Auth (email/password).
 - **Tailwind CSS** — styling.
 - **Vercel** — hosting, deployed from the GitHub repo.
