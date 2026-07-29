@@ -1,1 +1,1 @@
-# AI-Industry-Trainning-Hackathon
+# my-furniture-buyer-app
