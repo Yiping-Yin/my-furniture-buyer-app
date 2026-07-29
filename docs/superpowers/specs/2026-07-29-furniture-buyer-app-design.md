@@ -110,7 +110,7 @@ RLS is enabled on all four tables.
 
 | Table | Policy |
 |---|---|
-| `profiles` | A user may `select` and `update` only the row where `id = auth.uid()`. |
+| `profiles` | A user may `select` only the row where `id = auth.uid()`. **No update policy** — if users could update their own profile they could raise their own `budget`, defeating the whole feature. `total_spent` is changed only by the `place_order` function (§5.3). |
 | `products` | Any authenticated user may `select`. No insert/update/delete policy exists, so the catalogue is read-only to the app. |
 | `orders` | A user may `select` only rows where `user_id = auth.uid()`. No direct insert — orders are created only by the `place_order` function (§5.3). |
 | `order_items` | A user may `select` only rows whose parent order belongs to them. No direct insert. |
@@ -144,7 +144,7 @@ Checkout calls a Next.js **Server Action**, which calls a single Postgres functi
 4. Compute `total = sum(price * quantity)`.
 5. Read the user's `budget` and `total_spent`, locking the profile row. Reject if `total > budget - total_spent`.
 6. Insert the `orders` row, insert the `order_items` rows, and increase `profiles.total_spent` by `total`.
-7. Return the new order ID.
+7. Return a small result object — either `{ ok: true, order_id, total, remaining }`, or `{ ok: false, error: 'OVER_BUDGET', over_by, remaining }`. Expected rejections are returned as data rather than raised as database errors, so the app can turn them into the plain-English messages in §8 without parsing error strings. All rejection checks happen before any write, so a rejection writes nothing.
 
 Because steps 5–6 are one transaction with the profile row locked, two orders submitted at the same moment cannot both squeeze past the same remaining budget, and a failure partway through cannot leave a recorded order with an un-updated budget. Either the whole order lands or none of it does.
 
@@ -210,7 +210,11 @@ Every failure surfaces as plain English on the page — nothing fails silently.
 
 ## 9. Testing
 
-No automated test suite for Day 1. Each feature is verified by driving the running app in a browser — sign up, browse, add to cart, place an order inside budget, then attempt one over budget and confirm it is refused and the budget is unchanged. A working, demonstrable app is the Day 1 priority; tests can be added if the project continues past the hackathon.
+No browser-based UI test suite for Day 1 — screens are verified by clicking through the running app.
+
+**One exception, because it is cheap and guards the feature that matters most:** the budget rules in `place_order` get a real automated test script (`supabase/verify.mjs`). It signs up a throwaway user through the ordinary public path and calls `place_order` exactly as the app does, then asserts that an in-budget order succeeds and updates the balance by exactly the order total, that an over-budget order is refused with nothing written, that browser-supplied prices are ignored in favour of database prices, and that unknown products and zero quantities are rejected. Run with `npm run verify:db`.
+
+This is worth the time because budget arithmetic is the one place where a silent bug would be both easy to miss in a demo and embarrassing to discover live.
 
 ## 10. Day 1 acceptance criteria
 
